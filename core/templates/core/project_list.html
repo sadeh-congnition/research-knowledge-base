@@ -1,0 +1,21 @@
+{% extends "core/base.html" %}
+
+{% block content %}
+<h2>Projects</h2>
+<div id="project-list">
+    {% for project in projects %}
+        <div class="project-card">
+            <h3><a href="{% url 'project_detail' project.pk %}">{{ project.name }}</a></h3>
+            <p>{{ project.description }}</p>
+        </div>
+    {% endfor %}
+</div>
+
+<h3>Create New Project</h3>
+<form hx-post="{% url 'project_create' %}" hx-target="#project-list" hx-swap="beforeend">
+    {% csrf_token %}
+    <input type="text" name="name" placeholder="Project Name" required>
+    <textarea name="description" placeholder="Project Description"></textarea>
+    <button type="submit">Create Project</button>
+</form>
+{% endblock %}
