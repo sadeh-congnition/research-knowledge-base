@@ -1,0 +1,56 @@
+{% extends "core/base.html" %}
+{% load core_tags %}
+
+{% block content %}
+<h2>Node: {{ node.title }}</h2>
+<p><small>Project: <a href="{% url 'project_detail' node.project.id %}">{{ node.project.name }}</a></small></p>
+
+<div style="display: flex; gap: 20px;">
+    <div style="flex: 2;">
+        <h3>Content</h3>
+        <div class="node-card">
+            {{ node|wikilinks }}
+        </div>
+        
+        <h3>Edit Content</h3>
+        <form hx-post="{% url 'node_update' node.pk %}" hx-target="#content" hx-select="#content">
+            {% csrf_token %}
+            <input type="text" name="title" value="{{ node.title }}" required>
+            <textarea name="content" rows="10">{{ node.content }}</textarea>
+            <button type="submit">Update Node</button>
+        </form>
+    </div>
+    
+    <div style="flex: 1;">
+        <h3>Links</h3>
+        <h4>Linked To:</h4>
+        <ul id="linked-to">
+            {% for link in node.links.all %}
+                <li><a href="{% url 'node_detail' link.pk %}">{{ link.title }}</a></li>
+            {% empty %}
+                <li>No outgoing links.</li>
+            {% endfor %}
+        </ul>
+        
+        <h4>Linked By:</h4>
+        <ul id="linked-by">
+            {% for link in node.linked_by.all %}
+                <li><a href="{% url 'node_detail' link.pk %}">{{ link.title }}</a></li>
+            {% empty %}
+                <li>No incoming links.</li>
+            {% endfor %}
+        </ul>
+
+        <h3>Add Link</h3>
+        <form hx-post="{% url 'node_add_link' node.pk %}" hx-target="#content" hx-select="#content">
+            {% csrf_token %}
+            <select name="target_node_id">
+                {% for other_node in other_nodes %}
+                    <option value="{{ other_node.pk }}">{{ other_node.title }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit">Add Link</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
