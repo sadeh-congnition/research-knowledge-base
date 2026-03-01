@@ -34,8 +34,10 @@ def node_create(request, project_pk):
     if request.method == "POST":
         title = request.POST.get("title")
         content = request.POST.get("content")
-        node = Node.objects.create(project=project, title=title, content=content)
-        process_links(node)
+        
+        from .services import create_node_with_embedding
+        node = create_node_with_embedding(project, title, content)
+        
         # For HTMX, return the new node card
         return HttpResponse(f"""
             <div class="node-card">
@@ -60,6 +62,7 @@ def node_update(request, pk):
         node.title = request.POST.get("title")
         node.content = request.POST.get("content")
         node.save()
+        from .services import process_links
         process_links(node)
         # HTMX will reload the whole content area via hx-select
         other_nodes = Node.objects.filter(project=node.project).exclude(pk=pk)
@@ -83,11 +86,3 @@ def node_add_link(request, pk):
     return redirect("node_detail", pk=pk)
 
 
-def process_links(node):
-    # Find all occurrences of [[Title]]
-    titles = set(re.findall(r"\[\[(.*?)\]\]", node.content))
-    # We'll just add new ones to avoid clearing manual links from dropdown
-    for title in titles:
-        linked_node = node.project.nodes.filter(title=title).first()
-        if linked_node:
-            node.links.add(linked_node)
