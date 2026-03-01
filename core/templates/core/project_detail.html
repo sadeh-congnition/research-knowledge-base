@@ -4,7 +4,10 @@
 <h2>Project: {{ project.name }}</h2>
 <p>{{ project.description }}</p>
 
-<h3>Visualization</h3>
+<div style="display: flex; justify-content: space-between; align-items: center;">
+    <h3>Visualization</h3>
+    <button class="btn-search" onclick="openSearchPopup({{ project.id }})">🔍 Search this project</button>
+</div>
 <div id="visualization"></div>
 
 <script>

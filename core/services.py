@@ -48,3 +48,42 @@ def create_node_with_embedding(project: Project, title: str, content: str) -> No
     )
     
     return node
+
+
+def vector_search(query: str, project_id: int = None, n_results: int = 50) -> list[dict]:
+    if not query.strip():
+        return []
+        
+    collection = get_nodes_collection()
+    
+    kwargs = {
+        "query_texts": [query],
+        "n_results": n_results
+    }
+    
+    if project_id is not None:
+        kwargs["where"] = {"project_id": project_id}
+        
+    results = collection.query(**kwargs)
+    
+    if not results or not results["ids"] or not results["ids"][0]:
+        return []
+        
+    nodes_result = []
+    # results["ids"][0] is a list of node IDs
+    # results["metadatas"][0] is a list of dicts: {"project_id": 1, "title": "Node title"}
+    # results["distances"][0] is a list of float distances (lower usually means closer depending on distance metric)
+    
+    for idx, node_id_str in enumerate(results["ids"][0]):
+        title = results["metadatas"][0][idx].get("title", "Unknown Title")
+        distance = None
+        if "distances" in results and results["distances"] and len(results["distances"][0]) > idx:
+            distance = results["distances"][0][idx]
+            
+        nodes_result.append({
+            "id": node_id_str, 
+            "title": title,
+            "score": distance
+        })
+        
+    return nodes_result

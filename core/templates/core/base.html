@@ -7,6 +7,7 @@
     <title>Research Knowledge Base</title>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.0/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/cytoscape-node-html-label@1.2.2/dist/cytoscape-node-html-label.min.js"></script>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -157,19 +158,134 @@
         .node-textarea-wrapper {
             position: relative;
         }
+
+        /* Search Popup Styles */
+        #search-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #search-popup {
+            background: #111;
+            width: 80%;
+            max-width: 900px;
+            height: 80vh;
+            border-radius: 12px;
+            border: 1px solid #33ccff;
+            box-shadow: 0 0 30px rgba(51, 204, 255, 0.3);
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            position: relative;
+        }
+
+        #search-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        #search-header h2 {
+            margin: 0;
+            color: #33ccff;
+        }
+
+        #close-search {
+            background: transparent;
+            color: #fff;
+            border: none;
+            font-size: 1.5rem;
+            padding: 0;
+            cursor: pointer;
+        }
+
+        #close-search:hover {
+            color: #ff00ff;
+            transform: scale(1.1);
+        }
+
+        #search-input-wrapper {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        #search-popup-input {
+            flex-grow: 1;
+            font-size: 1.2rem;
+            padding: 12px;
+            border: 1px solid #444;
+            border-radius: 6px;
+        }
+
+        #search-popup-input:focus {
+            border-color: #33ccff;
+        }
+
+        #search-visualization {
+            flex-grow: 1;
+            width: 100%;
+            background: #000;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+
+        .nav-actions {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .btn-search {
+            background: #33ccff;
+            color: #000;
+        }
+
+        .btn-search:hover {
+            background: #00ffcc;
+        }
     </style>
 </head>
 
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
     <div class="container">
-        <header>
+        <header style="display: flex; justify-content: space-between; align-items: center;">
             <h1><a href="/" style="text-decoration: none; color: inherit;">Research Knowledge Base</a></h1>
+            <div class="nav-actions">
+                <button class="btn-search" onclick="openSearchPopup(null)">🔍 Search Global</button>
+            </div>
         </header>
         <main id="content">
             {% block content %}{% endblock %}
         </main>
     </div>
+
+    <!-- Search Popup Overlay -->
+    <div id="search-overlay">
+        <div id="search-popup">
+            <div id="search-header">
+                <h2 id="search-title">Vector Search</h2>
+                <button id="close-search" onclick="closeSearchPopup()">&times;</button>
+            </div>
+            <div id="search-input-wrapper">
+                <input type="text" id="search-popup-input"
+                    placeholder="Enter semantic search query... (Press Enter to search)">
+            </div>
+            <div id="search-visualization"></div>
+        </div>
+    </div>
+
     <script>
+        // Node Textarea Logic
         let activeTextarea = null;
 
         function handleNodeInput(event) {
@@ -224,6 +340,134 @@
                 const resultsDiv = wrapper.querySelector('#autocomplete-results');
                 resultsDiv.style.display = 'none';
             }
+        }
+
+        // Search Popup Logic
+        let currentSearchProjectId = null;
+        let searchCy = null;
+
+        function openSearchPopup(projectId) {
+            currentSearchProjectId = projectId;
+            const overlay = document.getElementById('search-overlay');
+            const title = document.getElementById('search-title');
+            const input = document.getElementById('search-popup-input');
+
+            title.innerText = projectId ? 'Project Search' : 'Global Search';
+            input.value = '';
+
+            if (searchCy) {
+                searchCy.destroy();
+                searchCy = null;
+            }
+
+            overlay.style.display = 'flex';
+            input.focus();
+        }
+
+        function closeSearchPopup() {
+            document.getElementById('search-overlay').style.display = 'none';
+        }
+
+        document.getElementById('search-popup-input').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                runVectorSearch(this.value);
+            }
+        });
+
+        // Close on clicking overlay bg
+        document.getElementById('search-overlay').addEventListener('click', function (e) {
+            if (e.target === this) {
+                closeSearchPopup();
+            }
+        });
+
+        function runVectorSearch(query) {
+            if (!query.trim()) return;
+
+            let url = '/api/search?q=' + encodeURIComponent(query);
+            if (currentSearchProjectId) {
+                url = '/api/project/' + currentSearchProjectId + '/vector-search?q=' + encodeURIComponent(query);
+            }
+
+            fetch(url)
+                .then(res => res.json())
+                .then(nodes => {
+                    const elements = nodes.map(node => {
+                        let scoreText = '';
+                        if (node.score !== undefined && node.score !== null) {
+                            scoreText = Number(node.score).toFixed(3);
+                        }
+
+                        return {
+                            data: {
+                                id: node.id,
+                                label: node.title,
+                                score: scoreText
+                            }
+                        };
+                    });
+
+                    renderSearchGraph(elements);
+                });
+        }
+
+        function renderSearchGraph(elements) {
+            if (searchCy) {
+                searchCy.destroy();
+            }
+
+            searchCy = cytoscape({
+                container: document.getElementById('search-visualization'),
+                elements: elements,
+                style: [
+                    {
+                        selector: 'node',
+                        style: {
+                            'label': 'data(label)',
+                            'background-color': '#ff00ff',
+                            'color': '#ffffff', // Default label color (title)
+                            'text-valign': 'center',
+                            'text-halign': 'center',
+                            'width': '120px',
+                            'height': '120px',
+                            'font-size': '13px',
+                            'text-wrap': 'wrap',
+                            'text-max-width': '110px',
+                            'text-margin-y': -8
+                        }
+                    }
+                ],
+                layout: {
+                    name: 'grid', // Search results don't have edges so grid or circle layout is best
+                    padding: 30,
+                    avoidOverlap: true
+                }
+            });
+
+            // Add HTML labels for the score to get a different color
+            if (typeof searchCy.nodeHtmlLabel === 'function') {
+                searchCy.nodeHtmlLabel([
+                    {
+                        query: 'node[score != ""]',
+                        valign: "center",
+                        halign: "center",
+                        valignBox: "center",
+                        halignBox: "center",
+                        tpl: function (data) {
+                            if (data.score) {
+                                return '<div style="color: #00ffcc; font-size: 12px; margin-top: 45px; font-weight: bold; text-shadow: 1px 1px 2px #000; pointer-events: none;">Score: ' + data.score + '</div>';
+                            }
+                            return '';
+                        }
+                    }
+                ]);
+            }
+
+            searchCy.on('tap', 'node', function (evt) {
+                var node = evt.target;
+                window.open('/nodes/' + node.id() + '/', '_blank');
+            });
         }
     </script>
 </body>
