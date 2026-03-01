@@ -20,4 +20,4 @@ def wikilinks(node):
         return f"[[{title}]]"
 
     html = re.sub(r"\[\[(.*?)\]\]", replace_link, content)
-    return mark_safe(html.replace("", "<br>"))
+    return mark_safe(html.replace("\n", "<br>"))
