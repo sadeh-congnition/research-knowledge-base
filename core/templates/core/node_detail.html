@@ -4,7 +4,17 @@
 {% block content %}
 <h2>Node: {{ node.title }}</h2>
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-    <p style="margin: 0;"><small>Project: <a href="{% url 'project_detail' node.project.id %}">{{ node.project.name}}</a></small></p>
+    <p style="margin: 0;">
+        <small>Project:
+            <select name="project_id" hx-post="/api/nodes/{{ node.id }}/move" hx-trigger="change"
+                style="font-size: inherit; padding: 2px; border-radius: 4px; border: 1px solid #ccc; max-width: 200px;">
+                {% for p in projects %}
+                <option value="{{ p.id }}" {% if p.is_current %}selected{% endif %}>{{ p.name }}</option>
+                {% endfor %}
+            </select>
+            <a href="{% url 'project_detail' node.project.id %}" style="margin-left: 8px;">(Go to Project)</a>
+        </small>
+    </p>
     <button hx-delete="/api/nodes/{{ node.id }}" hx-confirm="Are you sure you want to delete '{{ node.title }}'?"
         style="background: #e63946; color: white; padding: 8px 15px; border-radius: 4px; border: none; cursor: pointer; font-size: 0.9rem;">Delete
         Node</button>
