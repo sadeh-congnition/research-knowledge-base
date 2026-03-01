@@ -140,3 +140,21 @@ class KnowledgeBaseTests(TestCase):
 
         # Also clean it up so we don't bloat the real DB with test records
         collection.delete(ids=[str(node.id)])
+
+    def test_node_move_api(self):
+        project2 = Project.objects.create(
+            name="Project 2", description="Test Description 2"
+        )
+        import os
+        os.environ["NINJA_SKIP_REGISTRY"] = "yes"
+        test_client = TestClient(api)
+        response = test_client.post(
+            f"/nodes/{self.node1.id}/move",
+            {"project_id": project2.id},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["HX-Redirect"], f"/nodes/{self.node1.id}/")
+        
+        self.node1.refresh_from_db()
+        self.assertEqual(self.node1.project.id, project2.id)
+

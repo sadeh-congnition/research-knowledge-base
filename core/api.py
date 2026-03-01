@@ -1,4 +1,4 @@
-from ninja import NinjaAPI, ModelSchema, Schema
+from ninja import NinjaAPI, ModelSchema, Schema, Form
 from .models import Project, Node
 from django.shortcuts import get_object_or_404, render
 from django.http import HttpResponse
@@ -97,4 +97,20 @@ def delete_node(request, node_id: int):
 
     response = HttpResponse()
     response["HX-Redirect"] = f"/project/{project_id}/"
+    return response
+
+
+class NodeMoveSchema(Schema):
+    project_id: int
+
+
+@api.post("/nodes/{node_id}/move")
+def move_node(request, node_id: int, payload: NodeMoveSchema = Form(...)):
+    node = get_object_or_404(Node, id=node_id)
+    project = get_object_or_404(Project, id=payload.project_id)
+    node.project = project
+    node.save()
+
+    response = HttpResponse()
+    response["HX-Redirect"] = f"/nodes/{node.id}/"
     return response

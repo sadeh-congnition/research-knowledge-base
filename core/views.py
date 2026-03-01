@@ -48,11 +48,19 @@ def node_create(request, project_pk):
     return redirect("project_detail", pk=project_pk)
 
 
+def get_projects_for_node(node):
+    projects = list(Project.objects.all().order_by("-created_at"))
+    for p in projects:
+        p.is_current = (p.id == node.project.id)
+    return projects
+
+
 def node_detail(request, pk):
     node = get_object_or_404(Node, pk=pk)
     other_nodes = Node.objects.filter(project=node.project).exclude(pk=pk)
+    projects = get_projects_for_node(node)
     return render(
-        request, "core/node_detail.html", {"node": node, "other_nodes": other_nodes}
+        request, "core/node_detail.html", {"node": node, "other_nodes": other_nodes, "projects": projects}
     )
 
 
@@ -67,8 +75,9 @@ def node_update(request, pk):
         process_links(node)
         # HTMX will reload the whole content area via hx-select
         other_nodes = Node.objects.filter(project=node.project).exclude(pk=pk)
+        projects = get_projects_for_node(node)
         return render(
-            request, "core/node_detail.html", {"node": node, "other_nodes": other_nodes}
+            request, "core/node_detail.html", {"node": node, "other_nodes": other_nodes, "projects": projects}
         )
     return redirect("node_detail", pk=pk)
 
@@ -81,7 +90,8 @@ def node_add_link(request, pk):
         node.links.add(target_node)
         # HTMX will reload the whole content area
         other_nodes = Node.objects.filter(project=node.project).exclude(pk=pk)
+        projects = get_projects_for_node(node)
         return render(
-            request, "core/node_detail.html", {"node": node, "other_nodes": other_nodes}
+            request, "core/node_detail.html", {"node": node, "other_nodes": other_nodes, "projects": projects}
         )
     return redirect("node_detail", pk=pk)
