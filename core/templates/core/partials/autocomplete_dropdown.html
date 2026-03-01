@@ -1,0 +1,8 @@
+<div id="autocomplete-results" class="autocomplete-results"
+    style="{% if not nodes %}display: none;{% else %}display: block;{% endif %}">
+    {% for node in nodes %}
+    <div class="autocomplete-item" onclick="selectAutocomplete('{{ node.title|escapejs }}')">
+        {{ node.title }}
+    </div>
+    {% endfor %}
+</div>

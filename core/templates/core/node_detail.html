@@ -11,46 +11,43 @@
         <div class="node-card">
             {{ node|wikilinks }}
         </div>
-        
+
         <h3>Edit Content</h3>
         <form hx-post="{% url 'node_update' node.pk %}" hx-target="#content" hx-select="#content">
             {% csrf_token %}
             <input type="text" name="title" value="{{ node.title }}" required>
-            <textarea name="content" rows="10">{{ node.content }}</textarea>
+            <div class="node-textarea-wrapper">
+                <textarea name="content" rows="10" oninput="handleNodeInput(event)">{{ node.content }}</textarea>
+                <input type="hidden" id="node-search-query" name="q" value=""
+                    hx-get="/api/project/{{ node.project.id }}/nodes/search" hx-trigger="search"
+                    hx-target="#autocomplete-results" hx-swap="outerHTML" hx-select="#autocomplete-results"
+                    hx-params="q">
+                <div id="autocomplete-results" class="autocomplete-results" style="display: none;"></div>
+            </div>
             <button type="submit">Update Node</button>
         </form>
     </div>
-    
+
     <div style="flex: 1;">
         <h3>Links</h3>
         <h4>Linked To:</h4>
         <ul id="linked-to">
             {% for link in node.links.all %}
-                <li><a href="{% url 'node_detail' link.pk %}">{{ link.title }}</a></li>
+            <li><a href="{% url 'node_detail' link.pk %}">{{ link.title }}</a></li>
             {% empty %}
-                <li>No outgoing links.</li>
-            {% endfor %}
-        </ul>
-        
-        <h4>Linked By:</h4>
-        <ul id="linked-by">
-            {% for link in node.linked_by.all %}
-                <li><a href="{% url 'node_detail' link.pk %}">{{ link.title }}</a></li>
-            {% empty %}
-                <li>No incoming links.</li>
+            <li>No outgoing links.</li>
             {% endfor %}
         </ul>
 
-        <h3>Add Link</h3>
-        <form hx-post="{% url 'node_add_link' node.pk %}" hx-target="#content" hx-select="#content">
-            {% csrf_token %}
-            <select name="target_node_id">
-                {% for other_node in other_nodes %}
-                    <option value="{{ other_node.pk }}">{{ other_node.title }}</option>
-                {% endfor %}
-            </select>
-            <button type="submit">Add Link</button>
-        </form>
+        <h4>Linked By:</h4>
+        <ul id="linked-by">
+            {% for link in node.linked_by.all %}
+            <li><a href="{% url 'node_detail' link.pk %}">{{ link.title }}</a></li>
+            {% empty %}
+            <li>No incoming links.</li>
+            {% endfor %}
+        </ul>
+
     </div>
 </div>
 {% endblock %}

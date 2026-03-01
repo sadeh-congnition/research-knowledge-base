@@ -48,15 +48,15 @@
                     }
                 });
 
-                cy.on('tap', 'node', function(evt){
+                cy.on('tap', 'node', function (evt) {
                     var node = evt.target;
                     window.location.href = '/nodes/' + node.id() + '/';
                 });
             });
     }
-    
+
     document.addEventListener('DOMContentLoaded', initGraph);
-    document.addEventListener('htmx:afterOnLoad', function(evt) {
+    document.addEventListener('htmx:afterOnLoad', function (evt) {
         if (evt.detail.target.id === 'node-list' || evt.detail.target.id === 'visualization') {
             initGraph();
         }
@@ -68,20 +68,28 @@
         <h3>Nodes</h3>
         <div id="node-list">
             {% for node in project.nodes.all %}
-                <div class="node-card">
-                    <h4><a href="{% url 'node_detail' node.pk %}">{{ node.title }}</a></h4>
-                    <p>{{ node.content|truncatewords:20 }}</p>
-                </div>
+            <div class="node-card">
+                <h4><a href="{% url 'node_detail' node.pk %}">{{ node.title }}</a></h4>
+                <p>{{ node.content|truncatewords:20 }}</p>
+            </div>
             {% endfor %}
         </div>
     </div>
-    
+
     <div style="flex: 1;">
         <h3>Add New Node</h3>
         <form hx-post="{% url 'node_create' project.pk %}" hx-target="#node-list" hx-swap="beforeend">
             {% csrf_token %}
             <input type="text" name="title" placeholder="Node Title" required>
-            <textarea name="content" placeholder="Node Content (you can mention other nodes like @NodeTitle)"></textarea>
+            <div class="node-textarea-wrapper">
+                <textarea name="content" placeholder="Node Content (you can mention other nodes like [[NodeTitle]])"
+                    oninput="handleNodeInput(event)"></textarea>
+                <input type="hidden" id="node-search-query" name="q" value=""
+                    hx-get="/api/project/{{ project.id }}/nodes/search" hx-trigger="search"
+                    hx-target="#autocomplete-results" hx-swap="outerHTML" hx-select="#autocomplete-results"
+                    hx-params="q">
+                <div id="autocomplete-results" class="autocomplete-results" style="display: none;"></div>
+            </div>
             <button type="submit">Add Node</button>
         </form>
     </div>
