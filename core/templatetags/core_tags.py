@@ -2,6 +2,7 @@ import re
 from django import template
 from django.utils.safestring import mark_safe
 from django.urls import reverse
+from core.models import Node
 
 register = template.Library()
 
@@ -12,7 +13,7 @@ def wikilinks(node):
 
     def replace_link(match):
         title = match.group(1)
-        linked_node = node.project.nodes.filter(title=title).first()
+        linked_node = Node.objects.filter(title=title).first()
         if linked_node:
             url = reverse("node_detail", args=[linked_node.pk])
             return f'<a href="{url}">[[{title}]]</a>'

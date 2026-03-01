@@ -59,7 +59,11 @@ def test_create_node_endpoint(monkeypatch):
     def fake_upsert(**kwargs):  # noqa: ARG001
         pass
 
-    monkeypatch.setattr(services, "get_nodes_collection", lambda: type("C", (), {"upsert": staticmethod(fake_upsert)})())
+    monkeypatch.setattr(
+        services,
+        "get_nodes_collection",
+        lambda: type("C", (), {"upsert": staticmethod(fake_upsert)})(),
+    )
 
     project = baker.make(Project)
 
@@ -81,25 +85,33 @@ def test_create_node_endpoint(monkeypatch):
 def test_vector_search_global():
     # Use real Chromadb to test actual embedding and retrieval (as requested: no monkeypatch)
     from core.services import create_node_with_embedding, get_nodes_collection
-    
+
     project = baker.make(Project)
-    
+
     # Create two nodes with very distinct topics
-    node1 = create_node_with_embedding(project, "Global Search Test 1", "This node is all about machine learning algorithms")
-    node2 = create_node_with_embedding(project, "Global Search Test 2", "This node is all about beautiful UI design principles")
-    
+    node1 = create_node_with_embedding(
+        project,
+        "Global Search Test 1",
+        "This node is all about machine learning algorithms",
+    )
+    node2 = create_node_with_embedding(
+        project,
+        "Global Search Test 2",
+        "This node is all about beautiful UI design principles",
+    )
+
     try:
         # Search for algorithms
         response = client.get("/search?q=machine learning")
         assert response.status_code == 200
-        
+
         data = response.json()
         assert len(data) >= 1
-        
+
         # At least one result should be node1
         ids = [item["id"] for item in data]
         assert str(node1.id) in ids
-        
+
         # Ensure score is returned
         score = [item.get("score") for item in data if item["id"] == str(node1.id)][0]
         assert score is not None
@@ -113,26 +125,30 @@ def test_vector_search_global():
 @pytest.mark.django_db
 def test_vector_search_project_scoped():
     from core.services import create_node_with_embedding, get_nodes_collection
-    
+
     project1 = baker.make(Project)
     project2 = baker.make(Project)
-    
+
     # Same content, different projects
-    node1 = create_node_with_embedding(project1, "Project 1 Node", "Quantum physics is fascinating")
-    node2 = create_node_with_embedding(project2, "Project 2 Node", "Quantum physics is fascinating")
-    
+    node1 = create_node_with_embedding(
+        project1, "Project 1 Node", "Quantum physics is fascinating"
+    )
+    node2 = create_node_with_embedding(
+        project2, "Project 2 Node", "Quantum physics is fascinating"
+    )
+
     try:
         # Search scoped to project 1
         response = client.get(f"/project/{project1.id}/vector-search?q=Quantum")
         assert response.status_code == 200
-        
+
         data = response.json()
         ids = [item["id"] for item in data]
-        
+
         # Should find node1 but NOT node2
         assert str(node1.id) in ids
         assert str(node2.id) not in ids
-        
+
         # Ensure score is returned
         score = [item.get("score") for item in data if item["id"] == str(node1.id)][0]
         assert score is not None
@@ -149,7 +165,7 @@ def test_vector_search_empty_query():
     response = client.get("/search?q=")
     assert response.status_code == 200
     assert response.json() == []
-    
+
     project = baker.make(Project)
     response2 = client.get(f"/project/{project.id}/vector-search?q=   ")
     assert response2.status_code == 200

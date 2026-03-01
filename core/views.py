@@ -1,4 +1,3 @@
-import re
 from django.shortcuts import render, get_object_or_404, redirect
 from django.http import HttpResponse
 from .models import Project, Node
@@ -34,10 +33,11 @@ def node_create(request, project_pk):
     if request.method == "POST":
         title = request.POST.get("title")
         content = request.POST.get("content")
-        
+
         from .services import create_node_with_embedding
+
         node = create_node_with_embedding(project, title, content)
-        
+
         # For HTMX, return the new node card
         return HttpResponse(f"""
             <div class="node-card">
@@ -63,6 +63,7 @@ def node_update(request, pk):
         node.content = request.POST.get("content")
         node.save()
         from .services import process_links
+
         process_links(node)
         # HTMX will reload the whole content area via hx-select
         other_nodes = Node.objects.filter(project=node.project).exclude(pk=pk)
@@ -84,5 +85,3 @@ def node_add_link(request, pk):
             request, "core/node_detail.html", {"node": node, "other_nodes": other_nodes}
         )
     return redirect("node_detail", pk=pk)
-
-

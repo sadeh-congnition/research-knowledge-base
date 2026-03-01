@@ -59,11 +59,11 @@ def get_project_graph(request, project_id: int):
 
 @api.get("/project/{project_id}/nodes/search")
 def search_nodes(request, project_id: int, q: str = ""):
-    project = get_object_or_404(Project, id=project_id)
+    get_object_or_404(Project, id=project_id)
     if q:
-        nodes = project.nodes.filter(title__icontains=q)[:10]
+        nodes = Node.objects.select_related("project").filter(title__icontains=q)[:10]
     else:
-        nodes = project.nodes.all()[:10]
+        nodes = Node.objects.select_related("project").all()[:10]
     return render(
         request,
         "core/partials/autocomplete_dropdown.html",
