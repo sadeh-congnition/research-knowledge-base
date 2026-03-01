@@ -72,7 +72,7 @@ class KnowledgeBaseTests(TestCase):
         self.node2.content = "Link to [[Node 1]]"
         self.node2.save()
         # Trigger processing via update view (or call process_links directly)
-        from .views import process_links
+        from .services import process_links
 
         process_links(self.node2)
         self.assertTrue(self.node2.links.filter(pk=self.node1.pk).exists())
@@ -92,3 +92,18 @@ class KnowledgeBaseTests(TestCase):
         self.assertIn(str(self.node1.id), node_ids)
         self.assertIn(str(self.node2.id), node_ids)
         self.assertIn(f"e{self.node1.id}-{self.node2.id}", edge_ids)
+
+    def test_node_creation_service(self):
+        from .services import create_node_with_embedding, get_nodes_collection
+        
+        node = create_node_with_embedding(self.project, "Embedding Test Node", "Hello world ChromaDB")
+        self.assertEqual(node.title, "Embedding Test Node")
+        
+        # Verify it went into the real ChromaDB collection
+        collection = get_nodes_collection()
+        results = collection.get(ids=[str(node.id)])
+        self.assertTrue(len(results["ids"]) > 0)
+        self.assertIn(str(node.id), results["ids"])
+        
+        # Also clean it up so we don't bloat the real DB with test records
+        collection.delete(ids=[str(node.id)])
