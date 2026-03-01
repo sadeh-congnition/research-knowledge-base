@@ -1,7 +1,7 @@
 from ninja import NinjaAPI, ModelSchema, Schema
 from typing import List
 from .models import Project, Node
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, render
 
 api = NinjaAPI()
 
@@ -39,3 +39,13 @@ def get_project_graph(request, project_id: int):
             })
             
     return elements
+
+@api.get("/project/{project_id}/nodes/search")
+def search_nodes(request, project_id: int, q: str = ""):
+    project = get_object_or_404(Project, id=project_id)
+    if q:
+        nodes = project.nodes.filter(title__icontains=q)[:10]
+    else:
+        nodes = project.nodes.all()[:10]
+    return render(request, "core/partials/autocomplete_dropdown.html", {"nodes": nodes})
+
