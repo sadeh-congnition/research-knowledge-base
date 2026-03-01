@@ -11,6 +11,7 @@ dependencies = [
     "django-ninja>=1.5.3",
     "openai>=2.24.0",
     "sentence-transformers>=5.2.3",
+    "youtube-transcript-api>=1.2.4",
     "yt-dlp>=2026.2.21",
 ]
 
