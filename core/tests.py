@@ -1,6 +1,8 @@
 from django.test import TestCase, Client
 from django.urls import reverse
 from .models import Project, Node
+from ninja.testing import TestClient
+from core.api import api
 
 
 class KnowledgeBaseTests(TestCase):
@@ -77,6 +79,35 @@ class KnowledgeBaseTests(TestCase):
         process_links(self.node2)
         self.assertTrue(self.node2.links.filter(pk=self.node1.pk).exists())
 
+    def test_cross_project_wikilinks_processing(self):
+        project2 = Project.objects.create(
+            name="Project 2", description="Test Description 2"
+        )
+        node3 = Node.objects.create(
+            project=project2, title="Node 3", content="Link to [[Node 1]]"
+        )
+        from .services import process_links
+
+        process_links(node3)
+        self.assertTrue(node3.links.filter(pk=self.node1.pk).exists())
+
+    def test_search_nodes_cross_project(self):
+        project2 = Project.objects.create(
+            name="Project 2", description="Test Description 2"
+        )
+        Node.objects.create(project=project2, title="Node 3", content="Content 3")
+
+        import os
+
+        os.environ["NINJA_SKIP_REGISTRY"] = "yes"
+        test_client = TestClient(api)
+        response = test_client.get(
+            f"/project/{self.project.id}/nodes/search", {"q": "Node 3"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Node 3", response.content.decode())
+        self.assertIn("[Project 2]", response.content.decode())
+
     def test_graph_api_endpoint(self):
         # Link node1 to node2
         self.node1.links.add(self.node2)
@@ -95,15 +126,17 @@ class KnowledgeBaseTests(TestCase):
 
     def test_node_creation_service(self):
         from .services import create_node_with_embedding, get_nodes_collection
-        
-        node = create_node_with_embedding(self.project, "Embedding Test Node", "Hello world ChromaDB")
+
+        node = create_node_with_embedding(
+            self.project, "Embedding Test Node", "Hello world ChromaDB"
+        )
         self.assertEqual(node.title, "Embedding Test Node")
-        
+
         # Verify it went into the real ChromaDB collection
         collection = get_nodes_collection()
         results = collection.get(ids=[str(node.id)])
         self.assertTrue(len(results["ids"]) > 0)
         self.assertIn(str(node.id), results["ids"])
-        
+
         # Also clean it up so we don't bloat the real DB with test records
         collection.delete(ids=[str(node.id)])
