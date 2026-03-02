@@ -21,3 +21,14 @@ class Node(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class Question(models.Model):
+    node = models.ForeignKey(Node, on_delete=models.CASCADE, related_name="questions")
+    text = models.TextField()
+    answer = models.TextField(blank=True, null=True)
+    is_resolved = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Question for {self.node.title} - Resolved: {self.is_resolved}"

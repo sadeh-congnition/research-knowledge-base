@@ -35,6 +35,22 @@
                             }
                         },
                         {
+                            selector: 'node[type = "question"]',
+                            style: {
+                                'background-color': '#e63946',
+                                'shape': 'diamond',
+                                'width': '70px',
+                                'height': '70px',
+                                'font-size': '10px'
+                            }
+                        },
+                        {
+                            selector: 'node[type = "question"][resolved = "true"]',
+                            style: {
+                                'background-color': '#2a9d8f'
+                            }
+                        },
+                        {
                             selector: 'edge',
                             style: {
                                 'width': 3,
@@ -42,6 +58,16 @@
                                 'target-arrow-color': '#ccc',
                                 'target-arrow-shape': 'triangle',
                                 'curve-style': 'bezier'
+                            }
+                        },
+                        {
+                            selector: 'edge[type = "question_edge"]',
+                            style: {
+                                'width': 2,
+                                'line-color': '#f4a261',
+                                'target-arrow-shape': 'none',
+                                'curve-style': 'bezier',
+                                'line-style': 'dashed'
                             }
                         }
                     ],
@@ -53,7 +79,13 @@
 
                 cy.on('tap', 'node', function (evt) {
                     var node = evt.target;
-                    window.location.href = '/nodes/' + node.id() + '/';
+                    var nodeId = node.id();
+                    if (nodeId.startsWith('q_')) {
+                        var questionId = nodeId.substring(2);
+                        window.location.href = '/questions/' + questionId + '/';
+                    } else {
+                        window.location.href = '/nodes/' + nodeId + '/';
+                    }
                 });
             });
     }
@@ -68,6 +100,25 @@
 
 <div style="display: flex; gap: 20px;">
     <div style="flex: 1;">
+        <h3>Open Questions</h3>
+        {% if open_questions %}
+        <div id="open-questions-list" style="margin-bottom: 20px;">
+            {% for q in open_questions %}
+            <div class="node-card" style="border-left: 4px solid #e63946;">
+                <h4>
+                    <span class="question-wrapper">
+                        <a href="{% url 'question_detail' q.pk %}">{{ q.text|truncatechars:50 }}</a>
+                        <span class="question-bubble">{{ q.answer|default:"No answer yet" }}</span>
+                    </span>
+                </h4>
+                <p style="margin-bottom: 0;"><small>In Node: <a href="{% url 'node_detail' q.node.pk %}">{{ q.node.title }}</a></small></p>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p style="margin-bottom: 20px;">No open questions for this project.</p>
+        {% endif %}
+
         <h3>Nodes</h3>
         <div id="node-list">
             {% for node in project.nodes.all %}

@@ -1,6 +1,6 @@
 import chromadb
 from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
-from .models import Node, Project
+from .models import Node, Project, Question
 import re
 
 # Initialize the ChromaDB client mapped to a local directory
@@ -20,6 +20,32 @@ def get_nodes_collection():
     )
 
 
+def get_questions_collection():
+    return chroma_client.get_or_create_collection(
+        name="questions", embedding_function=embedding_gemma
+    )
+
+
+def embed_question(question: Question):
+    collection = get_questions_collection()
+
+    full_text = f"Question: {question.text}"
+    if question.answer:
+        full_text += f"\n\nAnswer: {question.answer}"
+
+    collection.upsert(
+        documents=[full_text],
+        ids=[str(question.id)],
+        metadatas=[
+            {
+                "node_id": question.node.id,
+                "project_id": question.node.project.id,
+                "is_resolved": question.is_resolved,
+            }
+        ],
+    )
+
+
 def process_links(node):
     # Find all occurrences of [[Title]]
     titles = set(re.findall(r"\[\[(.*?)\]\]", node.content))
@@ -30,12 +56,28 @@ def process_links(node):
             node.links.add(linked_node)
 
 
+def process_questions(node):
+    # Find all occurrences of [? Question ?]
+    questions_text = set(re.findall(r"\[\?(.*?)\?\]", node.content))
+    for qt in questions_text:
+        question_text = qt.strip()
+        if question_text:
+            question, created = Question.objects.get_or_create(
+                node=node, text=question_text
+            )
+            if created:
+                embed_question(question)
+
+
 def create_node_with_embedding(project: Project, title: str, content: str) -> Node:
     # Save to Django database
     node = Node.objects.create(project=project, title=title, content=content)
 
     # Process wiki links
     process_links(node)
+
+    # Process questions
+    process_questions(node)
 
     # Upsert to ChromaDB
     collection = get_nodes_collection()
@@ -58,33 +100,80 @@ def vector_search(
     if not query.strip():
         return []
 
-    collection = get_nodes_collection()
+    node_collection = get_nodes_collection()
+    question_collection = get_questions_collection()
 
     kwargs = {"query_texts": [query], "n_results": n_results}
 
     if project_id is not None:
         kwargs["where"] = {"project_id": project_id}
 
-    results = collection.query(**kwargs)
+    node_results = node_collection.query(**kwargs)
+    question_results = question_collection.query(**kwargs)
 
-    if not results or not results["ids"] or not results["ids"][0]:
-        return []
+    unique_nodes = {}
 
-    nodes_result = []
-    # results["ids"][0] is a list of node IDs
-    # results["metadatas"][0] is a list of dicts: {"project_id": 1, "title": "Node title"}
-    # results["distances"][0] is a list of float distances (lower usually means closer depending on distance metric)
+    if node_results and node_results.get("ids") and node_results["ids"][0]:
+        for idx, node_id_str in enumerate(node_results["ids"][0]):
+            title = node_results["metadatas"][0][idx].get("title", "Unknown Title")
+            distance = None
+            if (
+                "distances" in node_results
+                and node_results["distances"]
+                and len(node_results["distances"][0]) > idx
+            ):
+                distance = node_results["distances"][0][idx]
+            unique_nodes[node_id_str] = {
+                "id": node_id_str,
+                "title": title,
+                "score": distance,
+            }
 
-    for idx, node_id_str in enumerate(results["ids"][0]):
-        title = results["metadatas"][0][idx].get("title", "Unknown Title")
-        distance = None
-        if (
-            "distances" in results
-            and results["distances"]
-            and len(results["distances"][0]) > idx
-        ):
-            distance = results["distances"][0][idx]
+    if question_results and question_results.get("ids") and question_results["ids"][0]:
+        # Collect node IDs from question metadata
+        q_node_ids = []
+        for metadata in question_results["metadatas"][0]:
+            if "node_id" in metadata:
+                q_node_ids.append(str(metadata["node_id"]))
 
-        nodes_result.append({"id": node_id_str, "title": title, "score": distance})
+        # Fetch titles for these node IDs
+        nodes = Node.objects.filter(id__in=q_node_ids).values("id", "title")
+        node_title_map = {str(n["id"]): n["title"] for n in nodes}
 
-    return nodes_result
+        for idx, metadata in enumerate(question_results["metadatas"][0]):
+            if "node_id" not in metadata:
+                continue
+
+            node_id_str = str(metadata["node_id"])
+            distance = None
+            if (
+                "distances" in question_results
+                and question_results["distances"]
+                and len(question_results["distances"][0]) > idx
+            ):
+                distance = question_results["distances"][0][idx]
+
+            if node_id_str in unique_nodes:
+                if (
+                    distance is not None
+                    and unique_nodes[node_id_str]["score"] is not None
+                ):
+                    if distance < unique_nodes[node_id_str]["score"]:
+                        unique_nodes[node_id_str]["score"] = distance
+            else:
+                title = node_title_map.get(node_id_str, "Unknown Title")
+                unique_nodes[node_id_str] = {
+                    "id": node_id_str,
+                    "title": title,
+                    "score": distance,
+                }
+
+    nodes_result = list(unique_nodes.values())
+
+    # Sort by score ascending (lower distance is better)
+    def sort_key(n):
+        return n["score"] if n["score"] is not None else float("inf")
+
+    nodes_result.sort(key=sort_key)
+
+    return nodes_result[:n_results]

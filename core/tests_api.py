@@ -170,3 +170,146 @@ def test_vector_search_empty_query():
     response2 = client.get(f"/project/{project.id}/vector-search?q=   ")
     assert response2.status_code == 200
     assert response2.json() == []
+
+
+@pytest.mark.django_db
+def test_project_graph_with_questions():
+    from core.models import Question
+
+    project = baker.make(Project)
+    node1 = baker.make(Node, project=project, title="Node 1")
+    node2 = baker.make(Node, project=project, title="Node 2")
+
+    # Link nodes
+    node1.links.add(node2)
+
+    # Add questions to node 1
+    q1 = baker.make(Question, node=node1, text="What is this?")
+    q2 = baker.make(Question, node=node1, text="Why is this?")
+
+    response = client.get(f"/project/{project.id}/graph")
+    assert response.status_code == 200
+    elements = response.json()
+
+    # Check that we have the 2 nodes, 2 questions, 1 node edge, 1 question edge
+    assert len(elements) == 6
+
+    # Verify nodes
+    node_ids = [el["data"]["id"] for el in elements if el["data"].get("type") == "node"]
+    assert str(node1.id) in node_ids
+    assert str(node2.id) in node_ids
+
+    # Verify questions
+    question_ids = [
+        el["data"]["id"] for el in elements if el["data"].get("type") == "question"
+    ]
+    assert f"q_{q1.id}" in question_ids
+    assert f"q_{q2.id}" in question_ids
+
+    # Verify question edge
+    question_edges = [
+        el for el in elements if el["data"].get("type") == "question_edge"
+    ]
+    assert len(question_edges) == 1
+    edge = question_edges[0]["data"]
+
+    # Combination could be q1->q2 or q2->q1
+    sources_targets = {
+        (edge["source"], edge["target"]),
+        (edge["target"], edge["source"]),
+    }
+    assert (f"q_{q1.id}", f"q_{q2.id}") in sources_targets
+
+
+@pytest.mark.django_db
+def test_question_embedding():
+    from core.services import (
+        create_node_with_embedding,
+        get_questions_collection,
+        get_nodes_collection,
+    )
+    from core.models import Question
+
+    project = baker.make(Project)
+    node = create_node_with_embedding(
+        project,
+        "Question Node Test",
+        "Some text with a [? What is the meaning of life? ?] question in it.",
+    )
+
+    # Get the created question
+    question = Question.objects.get(node=node, text="What is the meaning of life?")
+
+    collection = get_questions_collection()
+    nodes_collection = get_nodes_collection()
+    try:
+        # 1. Verify embedding upon creation
+        results = collection.get(ids=[str(question.id)])
+        assert len(results["ids"]) == 1
+        assert "Question: What is the meaning of life?" in results["documents"][0]
+        assert "Answer:" not in results["documents"][0]
+
+        # 2. Answer the question via API
+        response = client.post(
+            f"/questions/{question.id}/answer",
+            data={"answer": "42"},
+            content_type="application/x-www-form-urlencoded",
+        )
+        assert response.status_code == 200
+
+        # 3. Verify embedding updated with answer
+        results_after = collection.get(ids=[str(question.id)])
+        assert len(results_after["ids"]) == 1
+        assert "Question: What is the meaning of life?" in results_after["documents"][0]
+        assert "Answer: 42" in results_after["documents"][0]
+
+    finally:
+        # Cleanup
+        collection.delete(ids=[str(question.id)])
+        nodes_collection.delete(ids=[str(node.id)])
+
+
+@pytest.mark.django_db
+def test_vector_search_with_questions():
+    from core.services import (
+        create_node_with_embedding,
+        get_nodes_collection,
+        get_questions_collection,
+    )
+
+    project = baker.make(Project)
+
+    # Create a node that doesn't mention the topic directly, but has a question that does
+    node = create_node_with_embedding(
+        project,
+        "General Discussion",
+        "We talked about many things today. [? How does quantum entanglement work? ?]",
+    )
+
+    try:
+        # Search for quantum entanglement
+        response = client.get("/search?q=quantum entanglement")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert len(data) >= 1
+
+        # The node should be hit because of the embedded question
+        ids = [item["id"] for item in data]
+        assert str(node.id) in ids
+
+        score = [item.get("score") for item in data if item["id"] == str(node.id)][0]
+        assert score is not None
+        assert isinstance(score, float)
+    finally:
+        nodes_collection = get_nodes_collection()
+        questions_collection = get_questions_collection()
+
+        # Cleanup ChromaDB
+        nodes_collection.delete(ids=[str(node.id)])
+        # Fetch the question to delete its embedding
+        from core.models import Question
+
+        questions = Question.objects.filter(node=node)
+        if questions.exists():
+            questions_collection.delete(ids=[str(q.id) for q in questions])

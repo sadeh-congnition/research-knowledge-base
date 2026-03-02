@@ -159,6 +159,50 @@
             position: relative;
         }
 
+        /* Question Tooltip Styles */
+        .question-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+
+        .question-bubble {
+            visibility: hidden;
+            width: max-content;
+            max-width: 300px;
+            background-color: #222;
+            color: #00ffcc;
+            text-align: center;
+            border-radius: 6px;
+            padding: 8px 12px;
+            position: absolute;
+            z-index: 1001;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.2s;
+            font-size: 0.9rem;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.6);
+            border: 1px solid #33ccff;
+            pointer-events: none;
+        }
+
+        .question-bubble::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -6px;
+            border-width: 6px;
+            border-style: solid;
+            border-color: #33ccff transparent transparent transparent;
+        }
+
+        .question-wrapper:hover .question-bubble {
+            visibility: visible;
+            opacity: 1;
+        }
+
         /* Search Popup Styles */
         #search-overlay {
             display: none;

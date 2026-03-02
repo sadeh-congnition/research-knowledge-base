@@ -146,6 +146,7 @@ class KnowledgeBaseTests(TestCase):
             name="Project 2", description="Test Description 2"
         )
         import os
+
         os.environ["NINJA_SKIP_REGISTRY"] = "yes"
         test_client = TestClient(api)
         response = test_client.post(
@@ -154,7 +155,84 @@ class KnowledgeBaseTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["HX-Redirect"], f"/nodes/{self.node1.id}/")
-        
+
         self.node1.refresh_from_db()
         self.assertEqual(self.node1.project.id, project2.id)
 
+    def test_process_questions(self):
+        from .services import process_questions
+        from .models import Question
+
+        self.node1.content = "Here is a question [? How to test this? ?] and another [? Why does it work? ?]"
+        self.node1.save()
+        process_questions(self.node1)
+
+        self.assertEqual(Question.objects.filter(node=self.node1).count(), 2)
+        self.assertTrue(Question.objects.filter(text="How to test this?").exists())
+        self.assertTrue(Question.objects.filter(text="Why does it work?").exists())
+
+    def test_wikilinks_question_rendering(self):
+        from .templatetags.core_tags import wikilinks
+        from .models import Question
+
+        self.node1.content = "Answer this: [? What is life? ?]"
+        self.node1.save()
+
+        # Test without question created in DB
+        rendered = wikilinks(self.node1)
+        self.assertIn("[? What is life? ?]", rendered)
+        self.assertNotIn("<a href=", rendered)
+
+        # Test with question created
+        q = Question.objects.create(node=self.node1, text="What is life?")
+        rendered = wikilinks(self.node1)
+        expected_url = reverse("question_detail", args=[q.pk])
+        self.assertIn(expected_url, rendered)
+        self.assertIn(
+            f'<a href="{expected_url}" class="question-link">[? What is life? ?]</a>',
+            rendered,
+        )
+
+    def test_answer_question_endpoint(self):
+        from .models import Question
+
+        q = Question.objects.create(node=self.node1, text="What is life?")
+
+        import os
+
+        os.environ["NINJA_SKIP_REGISTRY"] = "yes"
+        test_client = TestClient(api)
+        response = test_client.post(
+            f"/questions/{q.id}/answer",
+            {"answer": "42"},
+        )
+        self.assertEqual(response.status_code, 200)
+        q.refresh_from_db()
+        self.assertEqual(q.answer, "42")
+        self.assertEqual(response["HX-Redirect"], f"/questions/{q.id}/")
+
+    def test_resolve_question_endpoint(self):
+        from .models import Question
+
+        q = Question.objects.create(node=self.node1, text="What is life?")
+
+        import os
+
+        os.environ["NINJA_SKIP_REGISTRY"] = "yes"
+        test_client = TestClient(api)
+        response = test_client.post(f"/questions/{q.id}/resolve")
+        self.assertEqual(response.status_code, 200)
+        q.refresh_from_db()
+        self.assertTrue(q.is_resolved)
+        self.assertEqual(response["HX-Redirect"], f"/questions/{q.id}/")
+
+    def test_project_open_questions_view(self):
+        from .models import Question
+
+        Question.objects.create(node=self.node1, text="Open Q")
+        Question.objects.create(node=self.node1, text="Resolved Q", is_resolved=True)
+
+        response = self.client.get(reverse("project_detail", args=[self.project.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Open Q", response.content.decode())
+        self.assertNotIn("Resolved Q", response.content.decode())
